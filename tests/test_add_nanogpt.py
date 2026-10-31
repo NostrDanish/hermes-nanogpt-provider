@@ -51,6 +51,13 @@ def test_plugin_carries_referral_and_clean_endpoint():
             assert "base_url" not in line, f"referral path must never be a base_url: {line}"
 
 
+def test_helper_is_read_only_for_skills_guard():
+    """Skills Guard blocks community skills whose Python uses subprocess/os.environ."""
+    src = SCRIPT.read_text()
+    for banned in ("import subprocess", "import os", "os.environ", "shutil"):
+        assert banned not in src, f"helper must stay read-only: found {banned!r}"
+
+
 def test_skill_states_referral_policy():
     skill = (SKILL_DIR / "SKILL.md").read_text()
     assert "https://nano-gpt.com/r/AhJbKMxg" in skill

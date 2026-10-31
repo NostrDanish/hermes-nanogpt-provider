@@ -6,8 +6,8 @@ per-account rows (`nanogpt-duck`, `nanogpt-clown`, …) so each API key is
 tracked by name. It bundles a small model-provider plugin that supplies the
 display metadata and the **Get key** link in Hermes Desktop.
 
-The helper never changes your active model, never writes an API key, and never
-sends a completion.
+The helper never changes your active model, never writes an API key or any
+config — it is read-only and prints the exact commands to run.
 
 ## Install
 
@@ -19,11 +19,13 @@ Then ask your agent to add NanoGPT, or run the helper from the installed skill
 directory:
 
 ```bash
-python3 scripts/add_nanogpt.py            # preview
-python3 scripts/add_nanogpt.py --apply    # register providers.nanogpt
+python3 scripts/add_nanogpt.py            # read-only: probes + prints the commands
 # one row per account/key:
-python3 scripts/add_nanogpt.py --apply --slug nanogpt-duck
+python3 scripts/add_nanogpt.py --slug nanogpt-duck
 ```
+
+Run the printed `hermes config set providers.<slug>.*` lines and the plugin
+`cp -r` line, then verify with the printed `hermes config get` reads.
 
 Add your key yourself (never paste an API key into a chat):
 

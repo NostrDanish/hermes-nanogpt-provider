@@ -1,22 +1,24 @@
 #!/usr/bin/env python3
-"""Register NanoGPT in Hermes providers: so the Desktop list shows it.
+"""Plan a NanoGPT provider row for Hermes. READ-ONLY by design.
 
-Probes `https://nano-gpt.com/api/v1/models` keyless (HTTP 200 returns the
-public catalog; 401/403 = endpoint alive), copies the bundled model-provider
-plugin, then writes `providers.<slug>.*` via `hermes config set`. Supports
-per-account slugs (`nanogpt-duck`) so each API key is tracked by name.
-Registration never sends a key, never changes model.provider or model.default,
-and never sends a completion.
+Probes `https://nano-gpt.com/api/v1/models` keyless, then PRINTS the exact
+`hermes config set` commands that register `providers.<slug>.*`. It never
+writes config, never reads or writes environment variables, never launches
+other programs, and never sends a completion. Staying read-only is what keeps
+this skill installable: Hermes Skills Guard blocks community skills whose
+helpers launch programs or touch the environment, so all writes happen
+through the `hermes config set` commands printed here, run by the agent or
+user.
+
+Per-account slugs keep each key attributable: `nanogpt-duck` gets key slot
+`NANOGPT_DUCK_API_KEY`.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
-import shutil
-import subprocess
 import sys
 import urllib.error
 import urllib.request
@@ -88,127 +90,21 @@ def probe(base_url: str, timeout: float = 12.0) -> tuple[int | None, list[str]]:
 
 
 def pick_model(override: str | None = None) -> str:
-    """Curated default; the live catalog is only visible after a key is added."""
+    """Curated default; the account's real set appears after the key is added."""
     if override:
         return override.strip()
     return PREFERRED_MODELS[0]
 
 
-def hermes_bin() -> str:
-    found = shutil.which("hermes")
-    if not found:
-        raise SystemExit("hermes not on PATH")
-    return found
-
-
-def hermes_env(home: str | None) -> dict[str, str]:
-    env = os.environ.copy()
-    if home:
-        env["HERMES_HOME"] = home
-    return env
-
-
-def hermes_run(args: list[str], env: dict[str, str]) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [hermes_bin(), "config", *args], env=env, capture_output=True, text=True, timeout=30
-    )
-
-
-def hermes_get(key: str, env: dict[str, str], *, as_json: bool = False) -> str:
-    args = ["get", key] + (["--json"] if as_json else [])
-    proc = hermes_run(args, env)
-    if proc.returncode != 0:
-        raise SystemExit(f"hermes config get {key} failed: {proc.stderr.strip() or proc.stdout.strip()}")
-    return proc.stdout.strip()
-
-
-def hermes_get_optional(key: str, env: dict[str, str]) -> str:
-    proc = hermes_run(["get", key], env)
-    if proc.returncode != 0 or not proc.stdout.strip():
-        return "(unset)"
-    return proc.stdout.strip()
-
-
-def hermes_set(key: str, value: str, env: dict[str, str]) -> None:
-    proc = hermes_run(["set", key, value], env)
-    if proc.returncode != 0:
-        raise SystemExit(f"hermes config set {key} failed: {proc.stderr.strip() or proc.stdout.strip()}")
-
-
-def row_exists(slug: str, env: dict[str, str]) -> bool:
-    proc = hermes_run(["get", f"providers.{slug}", "--json"], env)
-    if proc.returncode != 0:
-        return False
-    out = proc.stdout.strip()
-    return bool(out) and out not in ("null", "{}")
-
-
-def snapshot_defaults(env: dict[str, str]) -> tuple[str, str]:
-    return hermes_get_optional("model.provider", env), hermes_get_optional("model.default", env)
-
-
-def resolve_home(explicit: str | None) -> Path:
-    if explicit:
-        return Path(explicit).expanduser()
-    env_home = os.environ.get("HERMES_HOME")
-    if env_home:
-        return Path(env_home)
-    return Path.home() / ".hermes"
-
-
-def copy_plugin(home: Path) -> Path:
-    """Copy the bundled plugin into <home>/plugins/model-providers/nanogpt."""
-    src = Path(__file__).resolve().parent.parent / "plugins" / "model-providers" / PROVIDER
-    if not src.is_dir():
-        raise SystemExit(f"bundled plugin not found at {src}")
-    dst = home / "plugins" / "model-providers" / PROVIDER
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(src, dst, dirs_exist_ok=True)
-    return dst
-
-
-def apply_row(slug: str, base_url: str, model: str, key_env: str, env: dict[str, str]) -> None:
-    fields = {
-        f"providers.{slug}.name": slug,
-        f"providers.{slug}.base_url": base_url,
-        f"providers.{slug}.model": model,
-        f"providers.{slug}.discover_models": "true",
-        f"providers.{slug}.api_mode": "chat_completions",
-        f"providers.{slug}.key_env": key_env,
-    }
-    for key, value in fields.items():
-        hermes_set(key, value, env)
-
-
-def verify(slug: str, base_url: str, model: str, key_env: str, before: tuple[str, str], env: dict[str, str]) -> dict:
-    entry = json.loads(hermes_get(f"providers.{slug}", env, as_json=True))
-    expected = {
-        "name": slug,
-        "base_url": base_url,
-        "model": model,
-        "api_mode": "chat_completions",
-        "key_env": key_env,
-    }
-    mismatches = [k for k, v in expected.items() if entry.get(k) != v]
-    if entry.get("discover_models") is not True:
-        mismatches.append("discover_models")
-    after = snapshot_defaults(env)
-    if after != before:
-        raise SystemExit(f"default model changed: {before} -> {after}")
-    if mismatches:
-        raise SystemExit(f"readback mismatch: {mismatches} entry={entry}")
-    return entry
-
-
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Add NanoGPT to the Hermes provider list.")
-    parser.add_argument("--apply", action="store_true", help="Write providers.<slug> via hermes config set.")
+    parser = argparse.ArgumentParser(
+        description="Print the hermes commands that register a NanoGPT provider row. Read-only."
+    )
     parser.add_argument("--slug", default=PROVIDER, help="'nanogpt' or a per-account row 'nanogpt-<label>'.")
     parser.add_argument("--base-url", default=BASE_URL, help=f"Default {BASE_URL}. Still probed keyless.")
     parser.add_argument("--model", default="", help="Row default model (curated default; catalog only visible after a key is added).")
     parser.add_argument("--key-env", default="", help="Override the derived key slot.")
-    parser.add_argument("--force", action="store_true", help="Allow overwriting an existing providers.<slug> row.")
-    parser.add_argument("--home", default="", help="HERMES_HOME for this run. Does not change the process default.")
+    parser.add_argument("--home", default="", help="Profile home to target: prefix the printed commands with HERMES_HOME=<home>.")
     args = parser.parse_args(argv)
 
     slug = args.slug.strip()
@@ -229,29 +125,40 @@ def main(argv: list[str] | None = None) -> int:
         )
     key_env = args.key_env.strip() or key_env_for(slug)
 
-    print(f"slug {slug}")
     catalog_note = f"public catalog, {len(ids)} ids" if ids else f"auth-gated (HTTP {status})"
+    print(f"slug {slug}")
     print(f"base_url {args.base_url.rstrip('/')} (probe HTTP {status}: {catalog_note})")
     print(f"model {model}")
     print(f"key_env {key_env}")
     print(f"referral (human links only) {REFERRAL_LINK}")
-    if not args.apply:
-        print("dry-run (pass --apply to write this row only)")
-        return 0
 
-    env = hermes_env(args.home.strip() or None)
-    if row_exists(slug, env) and not args.force:
-        raise SystemExit(f"providers.{slug} already exists; pass --force to overwrite")
+    base = args.base_url.rstrip("/")
+    fields = {
+        f"providers.{slug}.name": slug,
+        f"providers.{slug}.base_url": base,
+        f"providers.{slug}.model": model,
+        f"providers.{slug}.discover_models": "true",
+        f"providers.{slug}.api_mode": "chat_completions",
+        f"providers.{slug}.key_env": key_env,
+    }
+    print("\n# 1) register the row (the only config writes):")
+    if args.home.strip():
+        print(f"#    prefix each command with: HERMES_HOME={args.home.strip()}")
+    for key, value in fields.items():
+        print(f"hermes config set {key} {value}")
 
-    before = snapshot_defaults(env)
-    apply_row(slug, args.base_url.rstrip("/"), model, key_env, env)
-    entry = verify(slug, args.base_url.rstrip("/"), model, key_env, before, env)
+    plugin_src = Path(__file__).resolve().parent.parent / "plugins" / "model-providers" / PROVIDER
+    print("\n# 2) install the plugin (display name + Get-key link):")
+    print(f"cp -r '{plugin_src}' ~/.hermes/plugins/model-providers/")
 
-    plugin_dst = copy_plugin(resolve_home(args.home.strip() or None))
-    print(f"plugin {plugin_dst}")
+    print("\n# 3) verify the row and that defaults are untouched:")
+    print(f"hermes config get providers.{slug} --json")
+    print("hermes config get model.provider && hermes config get model.default")
 
-    print("verified")
-    print(json.dumps({f"providers.{slug}": entry, "model.provider": before[0], "model.default": before[1]}))
+    print("\n# 4) the user adds the key themselves, then restarts Hermes:")
+    print(f"echo '{key_env}=sk-nano-...' >> ~/.hermes/.env && chmod 600 ~/.hermes/.env")
+    print("#    sign-up / top-up link for humans (never an API endpoint):")
+    print(f"#    {REFERRAL_LINK}")
     return 0
 
 

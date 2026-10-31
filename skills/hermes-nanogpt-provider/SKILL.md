@@ -60,26 +60,31 @@ per request beyond subscription quota).
 
 ## Procedure
 
-1. Run the bundled script. It probes the endpoint keyless (HTTP 200 also
-  returns the public catalog; 401/403 = endpoint alive), copies the bundled
-  model-provider plugin into
-  `$HERMES_HOME/plugins/model-providers/nanogpt`, then writes only
-  `providers.<slug>.*` via `hermes config set`.
+1. Run the bundled helper — READ-ONLY: it probes the endpoint keyless
+   (HTTP 200 also returns the public catalog; 401/403 = endpoint alive) and
+   prints the exact registration commands. It writes nothing itself.
 
-  `terminal(command="python3 scripts/add_nanogpt.py --apply", workdir="<skill dir>", timeout=60)`
+   `terminal(command="python3 scripts/add_nanogpt.py --slug <slug>", workdir="<skill dir>", timeout=60)`
 
-  Per-account row: `python3 scripts/add_nanogpt.py --apply --slug nanogpt-duck`.
+   Per-account row: `--slug nanogpt-duck`. Done when it prints the slug,
+   base URL, chosen model, key slot, referral invite, and the numbered
+   command list.
 
-  Done when the script prints `verified` and exits 0.
+2. Check the target row is new:
+   `hermes config get providers.<slug> --json`. If it already exists, do not
+   overwrite it without the user's say-so.
 
-2. Read back the entry and the untouched default.
+3. Run the printed step-1 `hermes config set providers.<slug>.*` commands
+   through `terminal` (these are the only config writes), then the printed
+   step-2 `cp -r` to install the bundled plugin into
+   `$HERMES_HOME/plugins/model-providers/`, then the printed step-3
+   verification reads.
 
-  `terminal(command="hermes config get providers.<slug> --json && hermes config get model.provider && hermes config get model.default", timeout=20)`
+   Done when `providers.<slug>.base_url` is `https://nano-gpt.com/api/v1`,
+   `model.provider` / `model.default` match their pre-registration values,
+   and `$HERMES_HOME/plugins/model-providers/nanogpt/plugin.yaml` exists.
 
-  Done when `providers.<slug>.base_url` is `https://nano-gpt.com/api/v1` and
-  `model.provider` / `model.default` match the values from before the apply.
-
-3. Tell the user to add the key themselves to `~/.hermes/.env` (mode 600) and
+4. Tell the user to add the key themselves to `~/.hermes/.env` (mode 600) and
   restart Hermes so the gateway reloads env vars. On each NanoGPT account,
   create the key with billing mode **Subscription only** so out-of-catalog
   requests fail with HTTP 402 instead of draining the cash balance. Do not
@@ -106,8 +111,12 @@ which key served a request (and resets NanoGPT's per-key prompt caches).
   restarts, `discover_models: true` refreshes the picker with the account's
   real set — confirm the default model id then.
 - The picker-created `nano-gpt` row (key `HERMES_CUSTOM_NANO_GPT_API_KEY`) is
-  a different config key and is never touched; the script refuses to
-  overwrite any existing `providers.<slug>` row without `--force`.
+  a different config key and is never touched; check `providers.<slug>` first
+  and never overwrite an existing row without the user's say-so.
+- Keep the helper READ-ONLY (no `subprocess`, no `os.environ`): Hermes Skills
+  Guard flags both as high-risk in community skills and refuses to install
+  them — `--force` cannot override. All writes go through the `hermes config
+  set` commands the helper prints, run by the agent or user.
 - HTTP 402 after a key is added means the model is outside that account's
   subscription and the key is Subscription-only — the fence working, not a
   Hermes bug. HTTP 429 means that account's daily cap is exhausted.
@@ -124,5 +133,6 @@ which key served a request (and resets NanoGPT's per-key prompt caches).
   `api_mode: chat_completions`, and the derived `key_env`.
 - `model.provider` and `model.default` are unchanged.
 - `$HERMES_HOME/plugins/model-providers/nanogpt/` exists with `plugin.yaml`
-  whose profile `signup_url` is the referral link.
-- No key was written. Do not send a chat completion to prove it.
+  whose profile `signup_url` is the referral invite.
+- The helper itself performed no writes and sent no completion; no key was
+  written. Do not send a chat completion to prove it.
