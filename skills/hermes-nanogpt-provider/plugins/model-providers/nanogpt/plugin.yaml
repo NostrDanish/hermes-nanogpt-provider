@@ -1,0 +1,5 @@
+name: nanogpt
+kind: model-provider
+version: 0.1.0
+description: NanoGPT — per-account subscriptions, OpenAI-compatible inference
+author: NostrDanish, Hermes Agent
