@@ -23,12 +23,9 @@ models fail with HTTP 402 instead of draining the account's cash balance.
 
 ## Connect
 
-```bash
-# add the key yourself — do not paste it into chat
-echo 'NANOGPT_API_KEY=sk-nano-...' >> ~/.hermes/.env
-chmod 600 ~/.hermes/.env
-# restart Hermes so the gateway reloads env vars
-```
+Add `NANOGPT_API_KEY=sk-nano-...` yourself — never paste a key into chat.
+Use `hermes auth add nanogpt` or your Hermes secret storage (mode 600), then
+restart Hermes so the gateway reloads credentials.
 
 HTTP 429 = that account's daily cap is exhausted (resets daily).
 

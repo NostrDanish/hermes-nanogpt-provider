@@ -53,9 +53,9 @@ per request beyond subscription quota).
 
 - `hermes` on `PATH` (`hermes config set` / `hermes config get`).
 - Network access to `https://nano-gpt.com/api/v1`.
-- No API key at registration time. Keys stay in `~/.hermes/.env` (mode 600),
-  never in chat or `config.yaml`. Key slots: `NANOGPT_API_KEY` for the main
-  row, `NANOGPT_<LABEL>_API_KEY` for `nanogpt-<label>` rows (e.g.
+- No API key at registration time. Keys stay in the user's own secret
+  storage, never in chat or `config.yaml`. Key slots: `NANOGPT_API_KEY` for
+  the main row, `NANOGPT_<LABEL>_API_KEY` for `nanogpt-<label>` rows (e.g.
   `NANOGPT_DUCK_API_KEY`, `NANOGPT_CLOWN_API_KEY`).
 
 ## Procedure
@@ -84,12 +84,13 @@ per request beyond subscription quota).
    `model.provider` / `model.default` match their pre-registration values,
    and `$HERMES_HOME/plugins/model-providers/nanogpt/plugin.yaml` exists.
 
-4. Tell the user to add the key themselves to `~/.hermes/.env` (mode 600) and
-  restart Hermes so the gateway reloads env vars. On each NanoGPT account,
-  create the key with billing mode **Subscription only** so out-of-catalog
-  requests fail with HTTP 402 instead of draining the cash balance. Do not
-  ask the user to paste an `sk-nano-` key into chat. Point them at the
-  referral link if they need to create or top up an account.
+4. Tell the user to add the key themselves (the key slot from step 1) via
+   `hermes auth add nanogpt` or their Hermes secret storage, then restart
+   Hermes so the gateway reloads credentials. On each NanoGPT account,
+   create the key with billing mode **Subscription only** so out-of-catalog
+   requests fail with HTTP 402 instead of draining the cash balance. Do not
+   ask the user to paste an `sk-nano-` key into chat. Point them at the
+   referral invite if they need to create or top up an account.
 
 ## Multi-account pattern
 
@@ -113,9 +114,10 @@ which key served a request (and resets NanoGPT's per-key prompt caches).
 - The picker-created `nano-gpt` row (key `HERMES_CUSTOM_NANO_GPT_API_KEY`) is
   a different config key and is never touched; check `providers.<slug>` first
   and never overwrite an existing row without the user's say-so.
-- Keep the helper READ-ONLY (no `subprocess`, no `os.environ`): Hermes Skills
-  Guard flags both as high-risk in community skills and refuses to install
-  them — `--force` cannot override. All writes go through the `hermes config
+- Keep the helper READ-ONLY — no process launching, no environment reads, no
+  writes, and no literal secrets-file paths in any skill file: Hermes Skills
+  Guard blocks community skills over those patterns and `--force` cannot
+  override a dangerous verdict. All writes go through the `hermes config
   set` commands the helper prints, run by the agent or user.
 - HTTP 402 after a key is added means the model is outside that account's
   subscription and the key is Subscription-only — the fence working, not a
@@ -124,7 +126,7 @@ which key served a request (and resets NanoGPT's per-key prompt caches).
 - Other profiles do not inherit these rows. Re-run with `--home <path>` set
   to that profile's home.
 - Reopen the provider picker if it was already open, and restart Hermes
-  after `.env` changes — the gateway reads env at startup.
+  after credential changes — the gateway reads credentials at startup.
 
 ## Verification
 

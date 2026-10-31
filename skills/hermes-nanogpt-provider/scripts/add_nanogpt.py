@@ -155,8 +155,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"hermes config get providers.{slug} --json")
     print("hermes config get model.provider && hermes config get model.default")
 
-    print("\n# 4) the user adds the key themselves, then restarts Hermes:")
-    print(f"echo '{key_env}=sk-nano-...' >> ~/.hermes/.env && chmod 600 ~/.hermes/.env")
+    print(f"\n# 4) the user adds {key_env} themselves (Hermes secret storage")
+    print("#    or `hermes auth add nanogpt`), then restarts Hermes.")
     print("#    sign-up / top-up link for humans (never an API endpoint):")
     print(f"#    {REFERRAL_LINK}")
     return 0
